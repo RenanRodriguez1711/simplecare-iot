@@ -144,8 +144,39 @@ icacls "C:\Users\Mirna Arenas\.ssh\id_rsa" /inheritance:r /grant "DESKTOP-35L876
 
 **Problema:** al descargar el CSV y abrirlo en Excel, los caracteres con tilde y ñ aparecían mal codificados.
 
-**Solución:** agregar el Byte Order Mark (BOM) al inicio del archivo:
-```javascript
-res.send('\uFEFF' + lines.join('\n'));
+**Solución:** agregar el Byte Order Mark al inicio del archivo con el carácter Unicode U+FEFF antes del contenido del CSV.
+
+Ese carácter le indica a Excel que el archivo está en UTF-8.
+
+---
+
+## A013 — Un token de WhatsApp expirado falla en silencio, sin log visible
+
+**Problema:** Traccar no enviaba el WhatsApp de prueba y no aparecía ningún error ni en `pm2 logs` ni en `docker logs traccar` (con o sin filtro de fecha/hora).
+
+**Causa:** el token de acceso temporal de Meta (modo desarrollo) expira cada ~24h. Cuando expira, la llamada de Traccar a la API de Meta falla con `401 OAuthException`, pero Traccar no loguea ese error en un nivel visible por defecto — el fallo es completamente silencioso desde los logs.
+
+**Solución:** verificar la validez del token directamente contra la API de Meta antes de asumir que el problema está en Traccar:
+```bash
+curl -s "https://graph.facebook.com/v20.0/{phoneNumberId}?access_token={token}"
 ```
-El `\uFEFF` le indica a Excel que el archivo está en UTF-8.
+Si devuelve `{"error":{"code":190,...}}` (Session has expired), el token venció. Si devuelve los datos del número, el token es válido.
+
+**Regla general:** cuando WhatsApp no envía nada y no hay logs de error, sospechar primero del token antes de revisar la lógica de la app.
+
+---
+
+## A014 — `sed` para actualizar config debe coincidir con el formato REAL del archivo, no con el que uno asume
+
+**Problema:** se corrió `sed -i "s/token *=.*/token = '...'/"` sobre `write_config.py` para actualizar el token de WhatsApp. El comando no dio error, pero el token nunca cambió — Traccar seguía usando un token viejo (de una sesión anterior, distinto a los dos que se habían generado en la sesión actual).
+
+**Causa:** se asumió que `write_config.py` guardaba el token como una variable Python (`token = '...'`), pero en realidad el script tiene el XML completo hardcodeado como un string multilínea, con el token embebido directamente en una línea `<entry key='notificator.whatsapp.token'>...</entry>`. El patrón `token *=.*` nunca coincidió con esa línea, así que `sed` no reemplazó nada y falló en silencio (sin error, porque `sed` no avisa cuando un patrón no matchea ninguna línea).
+
+**Mismo problema afectó** a `templateLanguage`: se documentó en el CHANGELOG que se había actualizado a `es`, pero en realidad seguía en `es_MX` porque nunca se tocó el archivo correctamente.
+
+**Solución:** antes de escribir un comando `sed` para modificar una config remota, primero hacer `cat` del archivo real y confirmar el formato exacto de la línea a reemplazar. Para XML, usar el patrón completo de la etiqueta:
+```bash
+sed -i "s|<entry key='notificator.whatsapp.token'>.*</entry>|<entry key='notificator.whatsapp.token'>NUEVO_VALOR</entry>|" archivo.py
+```
+
+**Regla general:** después de correr un `sed` de actualización de config, siempre verificar con un `cat`/`grep` posterior que el cambio realmente se aplicó — no asumir éxito solo porque el comando no arrojó error.

@@ -13,37 +13,26 @@ El sistema está **funcionando en producción** en el VPS `2.24.196.49`.
 | Traccar (Docker) | ✅ Corriendo — recibe eventos del dispositivo EV07B |
 | Node.js (PM2) | ✅ Corriendo — puerto 3000 |
 | Dashboard municipal | ✅ `http://2.24.196.49:3000/dashboard` |
-| Plantilla WhatsApp | ✅ `simplecare_test2` activa en Meta (Spanish CHL) |
-| Token WhatsApp | ✅ Renovado el 26 jul 2026 — en `/root/write_config.py` del VPS |
-| Config Traccar | ✅ Actualizado con nuevo token + `templateName=simplecare_test2` + `templateLanguage=es` |
-| Prueba WhatsApp | ⏳ **PENDIENTE** — falta verificar número de contacto en Traccar |
+| Plantilla WhatsApp | ✅ `simplecare_test2` activa en Meta (Spanish CHL, código `es_CL`) |
+| Token WhatsApp | ✅ Válido — renovado el 26 jul 2026 (caduca ~24h, ver nota abajo) |
+| Config Traccar | ✅ Correcta y validada — `templateName=simplecare_test2`, `templateLanguage=es_CL` |
+| Prueba WhatsApp | ✅ **EXITOSA el 26 jul 2026** — alarma SOS llegó por WhatsApp al contacto configurado |
 | Multi-tenant | ❌ No implementado |
 | Autenticación dashboard | ❌ No implementada |
 
 ---
 
-## Lo primero que hay que hacer — Prueba de WhatsApp
+## Lo primero que hay que hacer — Multi-tenant backend
 
-La configuración de Traccar ya está lista. Solo falta verificar que el dispositivo EV07B tenga un número de teléfono configurado en sus notificaciones de Traccar.
+La prueba de WhatsApp quedó completa y funcionando (dispositivo → Traccar → Meta → WhatsApp). El siguiente hito real del proyecto es implementar multi-tenant para poder onboardear un segundo municipio real.
 
-**Paso 1 — Abrir panel Traccar:**
+**Nota sobre el token de WhatsApp:** el token temporal de Meta (modo desarrollo) expira cada ~24h y el fallo es **silencioso** — no aparece error en `pm2 logs` ni en `docker logs traccar`. Si WhatsApp deja de enviar, lo primero es verificar el token directamente:
+```bash
+curl -s "https://graph.facebook.com/v20.0/1294512040418742?access_token={TOKEN}"
 ```
-http://2.24.196.49:8082
-```
+Si devuelve `{"error":{"code":190,...}}`, el token venció — generar uno nuevo en Meta Developer Portal → Paso 1. Pruébalo → Generar token.
 
-**Paso 2 — Verificar notificaciones del dispositivo:**
-- Ir a **Notificaciones** en el panel
-- Verificar que el dispositivo EV07B tiene una notificación de tipo "Alarma" con canal WhatsApp
-- El campo de teléfono debe tener el número del contacto con código de país (ej: `56912345678`)
-- Si no tiene número configurado → agregar uno
-
-**Paso 3 — Activar alarma SOS** en el dispositivo físico y verificar:
-- [ ] El contacto recibe el WhatsApp con el texto: *"Alerta SimpleCare: SOS. Por favor verifique el estado del dispositivo."*
-- [ ] El evento aparece en el dashboard
-
-**Si falla con error de plantilla:**
-- Probar cambiando `templateLanguage` de `es` a `en_US` (y usar la plantilla en inglés "cancelado")
-- Ver instrucciones de actualización de config más abajo
+**Nota sobre notificaciones por dispositivo:** hoy el WhatsApp llega al `phone` de la cuenta **administradora** de Traccar (`renan.rodriguez@simplecare.cl`), no a un contacto específico por dispositivo — Traccar no tiene ese concepto nativo. Para escalar a cientos de dispositivos con contactos familiares distintos, la ruta recomendada es que el propio `server.js` llame a la API de Meta directamente (usando su tabla `device → contacto`) en vez de depender del sistema de notificaciones nativo de Traccar. Esto se resuelve junto con el punto de multi-tenant.
 
 ---
 
@@ -72,10 +61,7 @@ Meta Developer Portal → SimpleCare_WS → WhatsApp → Paso 1. Pruébalo → G
 
 ## Próximas tareas (en orden)
 
-### 1. Completar prueba WhatsApp ← AHORA
-Ver sección anterior.
-
-### 2. Multi-tenant backend
+### 1. Multi-tenant backend ← AHORA
 Cada municipio debe ver solo sus propios datos. El frontend ya está preparado — la URL `/dashboard/:clientId?token=xxx` ya lee `clientId` y `token`, pero el backend no los valida ni filtra.
 
 **Qué implementar en `server.js`:**
@@ -84,18 +70,18 @@ Cada municipio debe ver solo sus propios datos. El frontend ya está preparado �
 - Middleware que valide el token en todos los endpoints
 - Filtro por `client_id` en todas las queries
 
-### 3. Panel admin SimpleCare (interno)
+### 2. Panel admin SimpleCare (interno)
 Interfaz para asignar dispositivos a municipios al entregar el hardware.
 
-### 4. Autenticación del dashboard
+### 3. Autenticación del dashboard
 Validar el token secreto en el backend antes de servir datos.
 
-### 5. HTTPS + subdominio `panel.simplecare.cl`
+### 4. HTTPS + subdominio `panel.simplecare.cl`
 - Crear registro DNS tipo A: `panel` → `2.24.196.49` (en panel de Benza Hosting)
 - Instalar Nginx + Certbot en el VPS
 - Configurar reverse proxy
 
-### 6. Verificación Meta Business
+### 5. Verificación Meta Business
 Requisito para salir del sandbox de WhatsApp y enviar a cualquier número.
 
 ---

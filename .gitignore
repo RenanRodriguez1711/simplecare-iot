@@ -1,0 +1,16 @@
+# Credenciales y secretos
+.env
+*.env
+credenciales-reales.md
+
+# Base de datos local
+*.db
+*.db-journal
+
+# Node
+node_modules/
+npm-debug.log
+
+# OS
+.DS_Store
+Thumbs.db

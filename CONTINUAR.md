@@ -12,56 +12,71 @@ El sistema está **funcionando en producción** en el VPS `2.24.196.49`.
 |---|---|
 | Traccar (Docker) | ✅ Corriendo — recibe eventos del dispositivo EV07B |
 | Node.js (PM2) | ✅ Corriendo — puerto 3000 |
-| Dashboard municipal | ✅ Disponible en `http://2.24.196.49:3000/dashboard` |
-| WhatsApp | ⏳ Pendiente prueba — plantilla activa, token puede haber expirado |
+| Dashboard municipal | ✅ `http://2.24.196.49:3000/dashboard` |
+| Plantilla WhatsApp | ✅ `simplecare_test2` activa en Meta (Spanish CHL) |
+| Token WhatsApp | ✅ Renovado el 26 jul 2026 — en `/root/write_config.py` del VPS |
+| Config Traccar | ✅ Actualizado con nuevo token + `templateName=simplecare_test2` + `templateLanguage=es` |
+| Prueba WhatsApp | ⏳ **PENDIENTE** — falta verificar número de contacto en Traccar |
 | Multi-tenant | ❌ No implementado |
 | Autenticación dashboard | ❌ No implementada |
 
 ---
 
-## Lo primero que hay que hacer
+## Lo primero que hay que hacer — Prueba de WhatsApp
 
-### Prueba de WhatsApp (tarea inmediata)
+La configuración de Traccar ya está lista. Solo falta verificar que el dispositivo EV07B tenga un número de teléfono configurado en sus notificaciones de Traccar.
 
-La plantilla `simplecare_test2` está activa en Meta. Hay que:
+**Paso 1 — Abrir panel Traccar:**
+```
+http://2.24.196.49:8082
+```
 
-**1. Renovar el token** (caduca cada 24h en modo desarrollo):
-- Ir a [Meta Developer Portal](https://developers.facebook.com) → tu app → WhatsApp → API Setup
-- Copiar el token del Step 1
+**Paso 2 — Verificar notificaciones del dispositivo:**
+- Ir a **Notificaciones** en el panel
+- Verificar que el dispositivo EV07B tiene una notificación de tipo "Alarma" con canal WhatsApp
+- El campo de teléfono debe tener el número del contacto con código de país (ej: `56912345678`)
+- Si no tiene número configurado → agregar uno
 
-**2. Actualizar el config de Traccar** con el nuevo token:
+**Paso 3 — Activar alarma SOS** en el dispositivo físico y verificar:
+- [ ] El contacto recibe el WhatsApp con el texto: *"Alerta SimpleCare: SOS. Por favor verifique el estado del dispositivo."*
+- [ ] El evento aparece en el dashboard
+
+**Si falla con error de plantilla:**
+- Probar cambiando `templateLanguage` de `es` a `en_US` (y usar la plantilla en inglés "cancelado")
+- Ver instrucciones de actualización de config más abajo
+
+---
+
+## Cómo actualizar la config de Traccar
+
 ```bash
-# Conectar al VPS
 ssh root@2.24.196.49
-
-# Editar el token en el script
-nano /root/write_config.py
-# Reemplazar el valor de notificator.whatsapp.token
-
-# Aplicar
+nano /root/write_config.py   # editar token o templateLanguage
 python3 /root/write_config.py
 docker cp /root/traccar.xml traccar:/opt/traccar/conf/traccar.xml
 docker restart traccar
 ```
 
-Config actual de Traccar que debe quedar:
+Config actual en `/root/write_config.py`:
 ```
 templateName     = simplecare_test2
 templateLanguage = es
 phoneNumberId    = 1294512040418742
-event.forward.url = http://172.17.0.1:3000/webhook
+token            = renovado el 26 jul 2026 (caduca ~24h en modo desarrollo)
 ```
 
-**3. Activar alarma SOS en el dispositivo EV07B** y verificar:
-- Que el contacto registrado en Traccar recibe el WhatsApp
-- Que el evento aparece en `http://2.24.196.49:3000/dashboard`
+**El token de Meta caduca.** Si WhatsApp deja de funcionar, ir a:
+Meta Developer Portal → SimpleCare_WS → WhatsApp → Paso 1. Pruébalo → Generar token
 
 ---
 
 ## Próximas tareas (en orden)
 
-### 1. Multi-tenant backend
-Cada municipio debe ver solo sus propios datos. El frontend ya está preparado — la URL `/dashboard/:clientId?token=xxx` ya lee el `clientId` y el `token`, pero el backend aún no los valida ni filtra.
+### 1. Completar prueba WhatsApp ← AHORA
+Ver sección anterior.
+
+### 2. Multi-tenant backend
+Cada municipio debe ver solo sus propios datos. El frontend ya está preparado — la URL `/dashboard/:clientId?token=xxx` ya lee `clientId` y `token`, pero el backend no los valida ni filtra.
 
 **Qué implementar en `server.js`:**
 - Tabla `clients` en SQLite: `client_id, nombre, token`
@@ -69,20 +84,19 @@ Cada municipio debe ver solo sus propios datos. El frontend ya está preparado �
 - Middleware que valide el token en todos los endpoints
 - Filtro por `client_id` en todas las queries
 
-### 2. Panel admin SimpleCare (interno)
-Interfaz para asignar dispositivos a municipios al momento de la entrega. Sin esto, la asignación se hace a mano en la DB.
+### 3. Panel admin SimpleCare (interno)
+Interfaz para asignar dispositivos a municipios al entregar el hardware.
 
-### 3. Autenticación del dashboard
-Validar el token secreto en el backend antes de servir datos. El código frontend ya está listo — solo falta el backend.
+### 4. Autenticación del dashboard
+Validar el token secreto en el backend antes de servir datos.
 
-### 4. HTTPS + subdominio
-Cuando haya primer cliente real:
-- Crear registro DNS: `panel.simplecare.cl` → `2.24.196.49`
+### 5. HTTPS + subdominio `panel.simplecare.cl`
+- Crear registro DNS tipo A: `panel` → `2.24.196.49` (en panel de Benza Hosting)
 - Instalar Nginx + Certbot en el VPS
-- Configurar reverse proxy para `panel.simplecare.cl` → `localhost:3000`
+- Configurar reverse proxy
 
-### 5. Verificación Meta Business
-Requisito de Meta para salir del sandbox de WhatsApp y enviar mensajes a cualquier número (no solo los registrados en la cuenta de prueba).
+### 6. Verificación Meta Business
+Requisito para salir del sandbox de WhatsApp y enviar a cualquier número.
 
 ---
 
@@ -106,39 +120,25 @@ Host 2.24.196.49
 ## Comandos útiles en el VPS
 
 ```bash
-# Ver estado del servidor Node.js
-pm2 status
-
-# Ver logs en tiempo real
-pm2 logs simplecare
-
-# Reiniciar servidor
-pm2 restart simplecare
-
-# Ver logs de Traccar
-docker logs traccar --tail 50
-
-# Reiniciar Traccar
-docker restart traccar
-
-# Contar eventos en la DB
-cd /opt/simplecare && node -e "
-const db = require('better-sqlite3')('/opt/simplecare/events.db');
-console.log(db.prepare('SELECT alarm_type, COUNT(*) as n FROM events GROUP BY alarm_type').all());
-"
+pm2 status                          # estado del servidor Node.js
+pm2 logs simplecare                 # logs en tiempo real
+pm2 restart simplecare              # reiniciar servidor
+docker logs traccar --tail 50       # logs de Traccar
+docker restart traccar              # reiniciar Traccar
+docker ps                           # ver contenedores corriendo
 ```
 
 ---
 
 ## Archivos clave
 
-| Archivo | Ubicación |
+| Archivo | Ubicación en VPS |
 |---|---|
 | Backend Node.js | `/opt/simplecare/server.js` |
 | Dashboard HTML | `/opt/simplecare/public/dashboard.html` |
 | Base de datos | `/opt/simplecare/events.db` |
 | Config Traccar (script) | `/root/write_config.py` |
-| Config Traccar (XML) | `/root/traccar.xml` (se copia al contenedor) |
+| Config Traccar (XML) | `/root/traccar.xml` |
 
 ---
 
@@ -146,22 +146,10 @@ console.log(db.prepare('SELECT alarm_type, COUNT(*) as n FROM events GROUP BY al
 
 `https://github.com/RenanRodriguez1711/simplecare-iot` (privado)
 
-Estructura:
 ```
 ├── CONTINUAR.md          ← este archivo
 ├── README.md
-├── docs/
-│   ├── ARQUITECTURA.md
-│   ├── API.md
-│   ├── PRIVACIDAD.md
-│   ├── SEGURIDAD.md
-│   ├── RUNBOOK.md
-│   ├── DEPLOY.md
-│   ├── DECISIONES.md
-│   ├── APRENDIZAJES.md
-│   ├── ONBOARDING_MUNICIPIO.md
-│   ├── CREDENCIALES.md
-│   └── CHANGELOG.md
+├── docs/                 ← documentación completa
 └── server/
     ├── server.js
     └── dashboard.html
@@ -173,7 +161,7 @@ Estructura:
 
 ## Datos de prueba
 
-La base de datos tiene ~7.000–9.000 eventos **simulados** para 100 dispositivos del 25 mar al 25 jun 2026. Son solo para demostración — cuando haya datos reales se pueden borrar con:
+La base de datos tiene ~7.000–9.000 eventos **simulados** para 100 dispositivos del 25 mar al 25 jun 2026. Para borrarlos cuando haya datos reales:
 
 ```bash
 cd /opt/simplecare && node -e "
@@ -192,9 +180,4 @@ console.log('DB limpia');
 - **Propuesta al municipio:** datos anonimizados de uso y alertas para planificación social
 - **Marco legal:** Ley 21.719 Chile — los datos anonimizados no son datos personales
 - **WhatsApp:** canal de alertas directas a la familia del adulto mayor
-
----
-
-## Documentación completa
-
-Ver carpeta `docs/` para arquitectura, decisiones de diseño, runbook, privacidad y más.
+- **App Meta:** `SimpleCare_WS` — Phone Number ID: `1294512040418742`

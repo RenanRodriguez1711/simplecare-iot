@@ -140,3 +140,15 @@ El puntaje refleja **riesgo acumulado de fragilidad**, no urgencia del momento.
 - El municipio puede compartir fácilmente el acceso con sus funcionarios
 
 **Pendiente:** implementar la validación del token en el backend (actualmente el frontend está preparado pero el backend no valida).
+
+---
+
+## D012 — Multi-tenant se implementa antes de tener un segundo cliente confirmado
+
+**Decisión:** construir el soporte multi-tenant (tablas `clients`/`device_clients`, middleware de validación de token, filtro por `client_id`) como preparación anticipada, sin tener todavía un segundo municipio contratado.
+
+**Justificación:** una vez migrado el sistema a multi-tenant, el paso natural siguiente es ofrecer **notificación WhatsApp a contactos individuales por dispositivo** (hoy el mensaje llega a la cuenta administradora de Traccar, no a la familia del adulto mayor — ver limitación documentada en [CONTINUAR.md](../CONTINUAR.md)). Tener la base multi-tenant lista de antemano evita re-arquitecturar cuando se implemente esa función, porque el enrutamiento de contactos por dispositivo depende directamente de tener ya modelado `device → cliente`.
+
+**Orden de trabajo:**
+1. Multi-tenant backend (tablas, middleware, filtros) — en curso
+2. Notificación WhatsApp por contacto individual (usando la tabla `device_clients` ya existente para enrutar el mensaje a un contacto específico en vez de al admin de Traccar)

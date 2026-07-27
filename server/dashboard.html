@@ -313,7 +313,7 @@ async function abrirModal(id) {
   if (modalMarkers) modalMarkers.clearLayers();
   modalMarkers = L.layerGroup().addTo(modalMap);
 
-  const eventos = await fetch(`/dispositivo/${id}`).then(r => r.json());
+  const eventos = await fetch(`/dispositivo/${id}?token=${encodeURIComponent(token || '')}`).then(r => r.json());
   if (!eventos.length) return;
 
   eventos.forEach(e => {
@@ -338,7 +338,7 @@ async function cargar() {
       fetch(`/summary?${q}`).then(r => r.json()),
       fetch(`/heatmap?${q}`).then(r => r.json()),
       fetch(`/events?${q}`).then(r => r.json()),
-      fetch('/stats').then(r => r.json()),
+      fetch(`/stats?token=${encodeURIComponent(token || '')}`).then(r => r.json()),
       fetch(`/riesgo?${q}`).then(r => r.json()),
     ]);
     actualizarCards(summary);

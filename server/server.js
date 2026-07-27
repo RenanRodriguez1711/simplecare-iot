@@ -6,7 +6,14 @@ const Database = require('better-sqlite3');
 const app = express();
 app.use(express.json());
 
-const db = new Database('/opt/simplecare/events.db');
+// ── Configuración por entorno (solo para poder testear) ──────────────────────
+// Los valores por defecto son EXACTAMENTE los de producción: si no se definen
+// estas variables, el comportamiento es idéntico al de antes de este cambio.
+const DB_PATH        = process.env.SIMPLECARE_DB        || '/opt/simplecare/events.db';
+const DASHBOARD_PATH = process.env.SIMPLECARE_DASHBOARD || '/opt/simplecare/public/dashboard.html';
+const PORT           = Number(process.env.PORT) || 3000;
+
+const db = new Database(DB_PATH);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS events (
@@ -96,7 +103,7 @@ function anonymize(body) {
 
 app.get(['/dashboard', '/dashboard/:clientId'], (req, res) => {
   res.set('Content-Type', 'text/html');
-  res.send(fs.readFileSync('/opt/simplecare/public/dashboard.html', 'utf8'));
+  res.send(fs.readFileSync(DASHBOARD_PATH, 'utf8'));
 });
 
 // ── Webhook (Traccar → Node.js) ───────────────────────────────────────────────
@@ -289,4 +296,10 @@ app.get('/export', requireClient, (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-app.listen(3000, () => console.log('SimpleCare corriendo en puerto 3000'));
+// Solo escucha cuando se ejecuta directamente (`node server.js`). Si el módulo
+// se importa —como hacen los tests— se exporta la app sin abrir el puerto.
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`SimpleCare corriendo en puerto ${PORT}`));
+}
+
+module.exports = { app, db, normalizeAlarm, anonymize, ALARM_ALIASES, DB_PATH };

@@ -180,3 +180,19 @@ sed -i "s|<entry key='notificator.whatsapp.token'>.*</entry>|<entry key='notific
 ```
 
 **Regla general:** después de correr un `sed` de actualización de config, siempre verificar con un `cat`/`grep` posterior que el cambio realmente se aplicó — no asumir éxito solo porque el comando no arrojó error.
+
+---
+
+## A015 — Los datos simulados escondieron que Traccar usa camelCase en los tipos de alarma
+
+**Problema:** el dashboard mostraba correctamente los KPIs de "Batería baja" y "Caídas" con los 7.000+ eventos simulados, pero las alarmas **reales** del dispositivo no se contaban en ningún KPI, filtro ni exportación. El bug era invisible porque los datos simulados lo tapaban.
+
+**Causa:** Traccar entrega los tipos de alarma en camelCase (`lowBattery`, `fallDown`, `powerOn`), mientras que el script de simulación los generó en snake_case (`low_battery`, `fall`). Todas las queries del dashboard filtran por snake_case, así que las filas reales nunca coincidían.
+
+Se detectó al inspeccionar `/dispositivo/:id` del dispositivo de prueba real, donde aparecían `alarm_type` con valores `lowBattery` y `powerOn` — nombres que ninguna query del dashboard busca.
+
+**Impacto potencial:** `fallDown` es el nombre real de la caída, el evento de mayor peso en el puntaje de riesgo (3 pts). Con datos reales, el panel de riesgo habría quedado vacío o gravemente subestimado.
+
+**Solución:** normalizar en el webhook al momento de guardar, no parchear cada query. Se agregó `normalizeAlarm()` que convierte camelCase → snake_case genéricamente, más un diccionario `ALARM_ALIASES` para los renombres semánticos (`fallDown` → `fall`, `lowPower` → `low_battery`). Al arrancar, el servidor normaliza también las filas ya guardadas (operación idempotente).
+
+**Regla general:** cuando se generan datos de prueba sintéticos, generarlos con el **mismo formato exacto** que produce la fuente real, o el set de prueba enmascara errores de integración en vez de exponerlos.

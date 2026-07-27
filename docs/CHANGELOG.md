@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.0] — 2026-07-26
+
+### Implementado — Multi-tenant
+- Tablas `clients` (`client_id`, `nombre`, `token`) y `device_clients` (`device_hash` → `client_id`)
+- Middleware `requireClient`: valida el token de la query string, resuelve el `client_id` y lo inyecta en el request. 401 si falta token, 403 si es inválido.
+- Filtro por `client_id` en los 8 endpoints de datos: `/summary`, `/heatmap`, `/events`, `/stats`, `/utilization`, `/riesgo`, `/dispositivo/:id`, `/export`
+- Ruta `/dashboard/:clientId` además de `/dashboard`
+- Cliente `demo` autocreado, con todos los dispositivos existentes asignados — preserva el dashboard de prueba
+- `dashboard.html`: se agregó el token a los fetches de `/stats` y `/dispositivo/:id` que no lo enviaban
+- Decisión de diseño registrada en [DECISIONES.md D012](DECISIONES.md)
+
+**Verificado en producción:** cliente `demo` ve sus 192 alertas / 102 dispositivos; un segundo cliente vacío recibe `0` en todos los KPIs, `[]` en riesgo/eventos y CSV solo con cabecera. El acceso directo a un `device_hash` ajeno vía `/dispositivo/:id` devuelve `[]`.
+
+**Cambio que rompe el acceso anterior:** `http://2.24.196.49:3000/dashboard` ya no muestra datos sin token. La URL de prueba ahora es `http://2.24.196.49:3000/dashboard/demo?token=demo-token-dev-only`.
+
+### Corregido — Normalización de tipos de alarma
+- Las alarmas reales de Traccar llegan en camelCase (`lowBattery`, `fallDown`, `powerOn`) pero todas las queries filtran por snake_case (`low_battery`, `fall`). Las alarmas reales no se contaban en ningún KPI, filtro ni exportación — el bug estaba oculto porque los datos simulados sí usaban snake_case.
+- Se agregó `normalizeAlarm()` en el webhook (camelCase → snake_case genérico + alias semánticos `fallDown`→`fall`, `lowPower`→`low_battery`) y una migración idempotente al arranque que normaliza las filas ya guardadas.
+- Ver [APRENDIZAJES.md A015](APRENDIZAJES.md).
+
+---
+
 ## [0.2.1] — 2026-07-26
 
 ### Corregido — WhatsApp funcionando end-to-end

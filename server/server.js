@@ -54,12 +54,37 @@ function requireClient(req, res, next) {
   next();
 }
 
+// ── Normalización de nombres de alarma ────────────────────────────────────────
+// Traccar entrega los tipos en camelCase ('lowBattery', 'fallDown'). La DB y el
+// dashboard usan snake_case canónico. Sin esto, las alarmas reales no coinciden
+// con los filtros y quedan invisibles en el dashboard.
+
+const ALARM_ALIASES = {
+  fallDown: 'fall',        // Traccar nombra la caída 'fallDown'
+  lowPower: 'low_battery', // batería baja tiene dos nombres según el firmware
+};
+
+function normalizeAlarm(alarm) {
+  if (!alarm) return null;
+  if (ALARM_ALIASES[alarm]) return ALARM_ALIASES[alarm];
+  return alarm.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+}
+
+// Normaliza las filas ya guardadas con nombres en camelCase (idempotente).
+for (const { alarm_type } of db.prepare('SELECT DISTINCT alarm_type FROM events WHERE alarm_type IS NOT NULL').all()) {
+  const normalizado = normalizeAlarm(alarm_type);
+  if (normalizado !== alarm_type) {
+    const { changes } = db.prepare('UPDATE events SET alarm_type = ? WHERE alarm_type = ?').run(normalizado, alarm_type);
+    console.log(`Normalizado: ${alarm_type} -> ${normalizado} (${changes} filas)`);
+  }
+}
+
 function anonymize(body) {
   const event    = body.event;
   const position = body.position;
   return {
     device_hash: crypto.createHash('sha256').update(String(event.deviceId)).digest('hex').slice(0, 16),
-    alarm_type:  event.attributes?.alarm || null,
+    alarm_type:  normalizeAlarm(event.attributes?.alarm),
     event_type:  event.type,
     timestamp:   event.eventTime,
     lat_zone:    position?.latitude  ? Math.round(position.latitude  * 100) / 100 : null,
